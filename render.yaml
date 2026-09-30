@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: ai-news-aggregator
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      # Free Postgres from Neon (neon.tech) — Render's free Postgres expires after 30 days
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MY_EMAIL
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      # Secret for the "Run pipeline" button on the dashboard
+      - key: ADMIN_TOKEN
+        generateValue: true

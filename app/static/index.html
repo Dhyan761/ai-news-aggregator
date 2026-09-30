@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI News Digest</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #ffffff; --text: #1c1c1a; --muted: #6b6b66;
+    --border: #e4e4df; --accent: #3b5bdb;
+    --youtube: #d9480f; --openai: #2b8a3e; --anthropic: #9c36b5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413; --card: #1e1e1c; --text: #ececea; --muted: #9a9a94;
+      --border: #2e2e2b; --accent: #748ffc;
+      --youtube: #ff8a4c; --openai: #69db7c; --anthropic: #da77f2;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+  header h1 { margin: 0 0 4px; font-size: 26px; }
+  header p { margin: 0; color: var(--muted); }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+          padding: 10px 14px; min-width: 110px; }
+  .stat b { display: block; font-size: 20px; }
+  .stat span { color: var(--muted); font-size: 13px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .controls input { flex: 1 1 220px; }
+  input, select, button { font: inherit; color: var(--text); background: var(--card);
+          border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+          padding: 16px 18px; margin-bottom: 12px; }
+  .card h2 { font-size: 17px; margin: 6px 0; }
+  .card h2 a { color: inherit; text-decoration: none; }
+  .card h2 a:hover { color: var(--accent); }
+  .card p { margin: 0; }
+  .meta { display: flex; gap: 10px; align-items: center; font-size: 13px; color: var(--muted); }
+  .tag { font-weight: 600; text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+  .tag.youtube { color: var(--youtube); } .tag.openai { color: var(--openai); }
+  .tag.anthropic { color: var(--anthropic); }
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+  .more { display: block; margin: 16px auto 0; }
+  details { margin-top: 28px; color: var(--muted); font-size: 14px; }
+  details .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AI News Digest</h1>
+    <p>LLM-summarized updates from YouTube, OpenAI and Anthropic.</p>
+  </header>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="controls">
+    <input id="q" type="search" placeholder="Search titles and summaries…">
+    <select id="source">
+      <option value="">All sources</option>
+      <option value="youtube">YouTube</option>
+      <option value="openai">OpenAI</option>
+      <option value="anthropic">Anthropic</option>
+    </select>
+  </div>
+
+  <div id="list"></div>
+  <button class="more" id="more" hidden>Load more</button>
+
+  <details>
+    <summary>Admin: run the pipeline now</summary>
+    <div class="row">
+      <input id="token" type="password" placeholder="Admin token">
+      <button class="primary" id="run">Run pipeline</button>
+      <span id="runMsg"></span>
+    </div>
+  </details>
+</div>
+
+<script>
+const PAGE = 20;
+let offset = 0;
+const $ = (id) => document.getElementById(id);
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s ?? "";
+  return d.innerHTML;
+}
+
+function fmtDate(iso) {
+  return iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+}
+
+async function loadStats() {
+  const s = await fetch("/api/stats").then(r => r.json());
+  const by = s.by_source || {};
+  $("stats").innerHTML = [
+    ["Total digests", s.total],
+    ["YouTube", by.youtube || 0],
+    ["OpenAI", by.openai || 0],
+    ["Anthropic", by.anthropic || 0],
+    ["Last update", fmtDate(s.latest) || "—"],
+  ].map(([k, v]) => `<div class="stat"><b>${esc(String(v))}</b><span>${k}</span></div>`).join("");
+}
+
+async function loadDigests(reset = true) {
+  if (reset) offset = 0;
+  const params = new URLSearchParams({ limit: PAGE, offset });
+  if ($("q").value.trim()) params.set("q", $("q").value.trim());
+  if ($("source").value) params.set("source", $("source").value);
+  const data = await fetch(`/api/digests?${params}`).then(r => r.json());
+
+  const html = data.items.map(d => `
+    <article class="card">
+      <div class="meta"><span class="tag ${esc(d.source)}">${esc(d.source)}</span><span>${fmtDate(d.created_at)}</span></div>
+      <h2><a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.title)}</a></h2>
+      <p>${esc(d.summary)}</p>
+    </article>`).join("");
+
+  if (reset) $("list").innerHTML = html || `<div class="empty">No digests yet. Run the pipeline to fetch news.</div>`;
+  else $("list").insertAdjacentHTML("beforeend", html);
+
+  offset += data.items.length;
+  $("more").hidden = offset >= data.total;
+}
+
+let t;
+$("q").addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => loadDigests(), 300); });
+$("source").addEventListener("change", () => loadDigests());
+$("more").addEventListener("click", () => loadDigests(false));
+
+$("run").addEventListener("click", async () => {
+  $("runMsg").textContent = "Starting…";
+  const r = await fetch("/api/run-pipeline", { method: "POST", headers: { "X-Admin-Token": $("token").value } });
+  const body = await r.json().catch(() => ({}));
+  $("runMsg").textContent = r.ok ? "Started. Refresh in a few minutes." : (body.detail || "Failed");
+});
+
+loadStats();
+loadDigests();
+</script>
+</body>
+</html>
